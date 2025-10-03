@@ -591,7 +591,7 @@ local AutoDrinksTab = Window:Tab({Title = "Auto Drinks", Icon = "tag"}) do
     -- Interval Slider
     AutoDrinksTab:Slider({
         Title = "Eat/Drink Interval (sec)",
-        Min = 1,
+        Min = 0.3,
         Max = 60,
         Rounding = 0,
         Value = 5,
@@ -1194,3 +1194,4 @@ Window:Notify({
     Desc = "All components loaded successfully! Credits Ui: @x2zu",
     Time = 4
 })
+
