@@ -419,49 +419,161 @@ local AutoClickTab = Window:Tab({Title = "Auto Click", Icon = "tag"}) do
 end
 
 
--- Auto Eat/Drink Tab
+-- Auto Eat/Drink Tab (รวมเวอร์ชันปลอดภัย + rate limit)
 local AutoDrinksTab = Window:Tab({Title = "Auto Drinks", Icon = "tag"}) do
     AutoDrinksTab:Section({Title = "Auto Eat/Drink"})
+
+    local Players = game:GetService("Players")
+    local VirtualUser = game:GetService("VirtualUser")
+    local LocalPlayer = Players.LocalPlayer
 
     local autoEatEnabled = false
     local eatInterval = 5
 
-    -- ฟังก์ชันกินไอเทมในกระเป๋า
+    -- Rate limit: จำนวนครั้งสูงสุดต่อชั่วโมง (ปรับได้)
+    local useLimitEnabled = true
+    local maxUsesPerHour = 120
+    local usesCount = 0
+    local lastResetTime = tick()
+
+    -- รายชื่อเครื่องดื่ม (ตรวจชื่อแบบ case-insensitive)
+    local drinkNames = {
+        "Cider+", "Lemonade+", "Juice+", "Smoothie+",
+        "Cider", "Lemonade", "Juice", "Smoothie"
+    }
+
+    local function isDrink(itemName)
+        if not itemName then return false end
+        local lower = string.lower(itemName)
+        for _, d in ipairs(drinkNames) do
+            if lower == string.lower(d) then
+                return true
+            end
+        end
+        return false
+    end
+
+    -- wait แบบสุ่มเพื่อให้ดูเป็นมนุษย์
+    local function safeWait(minT, maxT)
+        task.wait(minT + math.random() * (maxT - minT))
+    end
+
+    -- เช็กสถานะพื้นฐานก่อนใช้ (ตัวอย่าง: ไม่ใช้ตอนตาย)
+    local function isInBadState(character)
+        if not character then return true end
+        local humanoid = character:FindFirstChild("Humanoid")
+        if not humanoid then return true end
+        if humanoid.Health <= 0 then return true end
+        -- เพิ่มเงื่อนไขอื่นได้ตามเกม (เช่น กำลังสู้, สตัน ฯลฯ)
+        return false
+    end
+
+    -- รีเซ็ตรอบนับการใช้ทุกชั่วโมง
+    local function resetUsesIfNeeded()
+        if tick() - lastResetTime >= 3600 then
+            usesCount = 0
+            lastResetTime = tick()
+            print("[AutoDrinks] Reset uses counter.")
+        end
+    end
+
+    -- ฟังก์ชันใช้/ดื่ม item อย่างปลอดภัย
+    local function tryUseTool(tool)
+        if not tool or not tool.Parent then return false end
+        local success = false
+        -- พยายาม Equip ก่อน
+        pcall(function()
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("Humanoid") then
+                char.Humanoid:EquipTool(tool)
+            end
+        end)
+        safeWait(0.08, 0.2)
+
+        -- ถ้ามี method Activate ให้ใช้
+        local ok, _ = pcall(function()
+            if tool and tool.Parent == LocalPlayer.Character and type(tool.Activate) == "function" then
+                tool:Activate()
+                success = true
+            end
+        end)
+
+        -- ถ้าไม่สำเร็จ ให้ลอง fallback ด้วย VirtualUser (ถ้ามี)
+        if not success then
+            pcall(function()
+                if VirtualUser and tool and tool.Parent == LocalPlayer.Character then
+                    VirtualUser:CaptureController()
+                    VirtualUser:Button1Down()
+                    safeWait(0.03, 0.12)
+                    VirtualUser:Button1Up()
+                    success = true
+                end
+            end)
+        end
+
+        return success
+    end
+
+    -- ฟังก์ชันหลัก: ตรวจและกิน/ดื่มใน Backpack
     local function performEat()
-        local success, plr = pcall(function() return game.Players.LocalPlayer end)
-        if not success or not plr then return end
+        -- รีเซ็ตนับการใช้ถ้าผ่านชั่วโมง
+        resetUsesIfNeeded()
 
+        -- ถ้าเปิดจำกัดการใช้และเกินแล้ว ให้ข้ามรอบนี้
+        if useLimitEnabled and usesCount >= maxUsesPerHour then
+            print("[AutoDrinks] Reached max uses per hour:", usesCount)
+            return
+        end
+
+        local ok, plr = pcall(function() return LocalPlayer end)
+        if not ok or not plr then return end
         local backpack = plr:FindFirstChild("Backpack")
-        if not backpack then return end
+        local character = plr.Character
+        if not backpack or not character then return end
 
-        for _, item in pairs(backpack:GetChildren()) do
-            if item:IsA("Tool") then
-                -- ถือไอเทม
-                plr.Character.Humanoid:EquipTool(item)
+        if isInBadState(character) then
+            -- อยู่ในสถานะไม่ควรใช้ เช่น ตาย
+            return
+        end
 
-                -- Simulate การคลิกหน้าจอเพื่อกิน
-                local vu = game:GetService("VirtualUser")
-                if vu then
-                    vu:CaptureController()
-                    vu:Button1Down()
-                    task.wait(0.03)
-                    vu:Button1Up()
-                else
-                    -- ถ้ามี mouse1click()
-                    if type(mouse1click) == "function" then
-                        pcall(mouse1click)
-                    end
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if hrp and hrp.Velocity and hrp.Velocity.Magnitude > 8 then
+            -- ถ้ากำลังเคลื่อนที่เร็ว ให้หน่วงเล็กน้อยก่อนใช้งาน
+            safeWait(0.6, 1.2)
+        end
+
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item and item:IsA("Tool") and isDrink(item.Name) then
+                -- ตรวจอีกทีก่อนใช้งาน (rate limit)
+                resetUsesIfNeeded()
+                if useLimitEnabled and usesCount >= maxUsesPerHour then
+                    print("[AutoDrinks] Stop: reached limit during loop.")
+                    return
                 end
 
-                task.wait(0.2) -- เว้นเวลาเล็กน้อยก่อนกิน item ถัดไป
+                local used = false
+                local success, err = pcall(function()
+                    used = tryUseTool(item)
+                end)
+                if not success then
+                    warn("[AutoDrinks] Error when trying to use tool:", err)
+                end
+
+                if used then
+                    usesCount = usesCount + 1
+                    print(string.format("[AutoDrinks] Used %s (total this hour: %d)", item.Name, usesCount))
+                end
+
+                -- รอแบบสุ่มหลังแต่ละการใช้ เพื่อไม่ให้เป็น pattern เดิม
+                safeWait(0.6, 1.6)
             end
         end
     end
 
-
+    -- Toggle Auto
     AutoDrinksTab:Toggle({
         Title = "Enable Auto Eat/Drink",
-        Desc = "Automatically eat/drink items in backpack",
+        Desc = "Automatically drink items in backpack (safer mode)",
         Value = false,
         Callback = function(v)
             autoEatEnabled = v
@@ -469,13 +581,14 @@ local AutoDrinksTab = Window:Tab({Title = "Auto Drinks", Icon = "tag"}) do
                 task.spawn(function()
                     while autoEatEnabled do
                         performEat()
-                        task.wait(eatInterval)
+                        task.wait(eatInterval + math.random() * 1.5) -- หยุดเป็นช่วงสุ่ม
                     end
                 end)
             end
         end
     })
 
+    -- Interval Slider
     AutoDrinksTab:Slider({
         Title = "Eat/Drink Interval (sec)",
         Min = 1,
@@ -485,6 +598,30 @@ local AutoDrinksTab = Window:Tab({Title = "Auto Drinks", Icon = "tag"}) do
         Callback = function(val)
             eatInterval = val
             print("Eat/Drink interval set to:", val)
+        end
+    })
+
+    -- Optional: เปิด/ปิด rate limit
+    AutoDrinksTab:Toggle({
+        Title = "Enable Rate Limit (uses/hour)",
+        Desc = "Limit how many uses per hour to reduce detection risk",
+        Value = useLimitEnabled,
+        Callback = function(v)
+            useLimitEnabled = v
+            print("Rate limit enabled:", useLimitEnabled)
+        end
+    })
+
+    -- Slider สำหรับ max uses per hour
+    AutoDrinksTab:Slider({
+        Title = "Max Uses Per Hour",
+        Min = 10,
+        Max = 1000,
+        Rounding = 0,
+        Value = maxUsesPerHour,
+        Callback = function(val)
+            maxUsesPerHour = val
+            print("Max uses per hour set to:", val)
         end
     })
 end
@@ -886,8 +1023,8 @@ end
 -- Line Separator
 Window:Line()
 
--- Extra Tab
-local Extra = Window:Tab({Title = "Extra", Icon = "tag"}) do
+-- Island
+local Extra = Window:Tab({Title = "Island", Icon = "tag"}) do
     Extra:Section({Title = "About"})
     Extra:Button({
         Title = "Show Message",
@@ -900,7 +1037,123 @@ local Extra = Window:Tab({Title = "Extra", Icon = "tag"}) do
             })
         end
     })
+
+    -- ==========================
+    -- Fly System Section
+    -- ==========================
+    Extra:Section({Title = "Fly System"})
+
+    -- เก็บตำแหน่ง
+    local Locations = {
+        ["Windmill"] = Vector3.new(105.8, 265.0, -37.4),
+        ["Big Cave"] = Vector3.new(60.9, 300.0, -986.7),
+        ["Sam Island"] = Vector3.new(-1410.2, 268.7, -1440.1),
+        ["Orange House"] = Vector3.new(868.3, 290.0, 1243.1),
+        ["Cafe"] = Vector3.new(1480.2, 288.6, 2128.8),
+        ["Red House"] = Vector3.new(1126.2, 220.9, 3345.6),
+        ["Sand (AF)"] = Vector3.new(122.8, 282.5, 4945.1),
+        ["Snow Island (Small)"] = Vector3.new(-1819.4, 412.2, 3322.9),
+        ["Ball"] = Vector3.new(-2621.9, 317.9, 1099.4),
+        ["Big Tree"] = Vector3.new(-6034.5, 424.7, -7.5),
+        ["One Block"] = Vector3.new(-4004.7, 220.1, -2191.0),
+        ["Marin"] = Vector3.new(-3134.5, 509.0, -3990.7),
+        ["Purple Island"] = Vector3.new(-5284.6, 544.2, -7758.0),
+        ["Sand Island"] = Vector3.new(1075.6, 289.5, -3332.1),
+        ["Summon Island"] = Vector3.new(4846.3, 648.7, -7257.8),
+        ["Snow Island (Big)"] = Vector3.new(6209.7, 586.6, -1263.7),
+        ["Vokun Island"] = Vector3.new(4613.5, 587.0, 5265.0),
+        ["Moon Island"] = Vector3.new(3229, 420.0, 1675.3),
+        ["Mini Town"] = Vector3.new(1886.2, 340.6, 634.9),
+        ["Tree Stone"] = Vector3.new(-31.2, 248.8, 2153.5),
+        ["Krizma Island"] = Vector3.new(-1073.9, 380.5, 1668.7),
+        ["Sand Island (Very Small)"] = Vector3.new(-1213.9, 266.7, 651.9),
+        ["Bear Island"] = Vector3.new(-1623.6, 260.0, -248.5),
+    }
+
+    local selectedLocation = nil
+    local selectedKey = Enum.KeyCode.Z
+    local powerMode = "Gas"
+
+    -- Dropdown เลือก Location
+    Extra:Dropdown({
+        Title = "Select Location",
+        Values = table.getkeys(Locations),
+        Multi = false,
+        Callback = function(choice)
+            selectedLocation = Locations[choice]
+        end
+    })
+
+    -- Dropdown เลือกปุ่มบิน
+    Extra:Dropdown({
+        Title = "Select Fly Key",
+        Values = {"Z","X","C","V","B"},
+        Callback = function(choice)
+            selectedKey = Enum.KeyCode[choice]
+        end
+    })
+
+    -- Dropdown เลือกพลัง
+    Extra:Dropdown({
+        Title = "Power Mode",
+        Values = {"Gas","Not gas"},
+        Callback = function(choice)
+            powerMode = choice
+        end
+    })
+
+    -- ปุ่มเริ่ม Fly
+    Extra:Button({
+        Title = "Fly to Mark",
+        Callback = function()
+            if not selectedLocation then
+                warn("Please select location first")
+                return
+            end
+
+            local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            local hrp = char:WaitForChild("HumanoidRootPart")
+            local TweenService = game:GetService("TweenService")
+            local VirtualInputManager = game:GetService("VirtualInputManager")
+
+            -- ปรับความสูงให้ ≥ 211.2 + 30 stud
+            local startY = math.max(hrp.Position.Y + 30, 211.2)
+            local liftPos = Vector3.new(hrp.Position.X, startY, hrp.Position.Z)
+
+            if powerMode == "Gas" then
+                -- กดปุ่มบิน
+                VirtualInputManager:SendKeyEvent(true, selectedKey, false, game)
+                task.wait(0.1)
+                VirtualInputManager:SendKeyEvent(false, selectedKey, false, game)
+
+                -- ลอยขึ้น
+                hrp.CFrame = CFrame.new(liftPos)
+                task.wait(0.5)
+
+                -- Tween ลอยไป
+                local goal = {CFrame = CFrame.new(Vector3.new(selectedLocation.X, math.max(selectedLocation.Y, 211.2), selectedLocation.Z))}
+                local dist = (hrp.Position - selectedLocation).Magnitude
+                local info = TweenInfo.new(dist/150, Enum.EasingStyle.Linear)
+                TweenService:Create(hrp, info, goal):Play()
+
+                task.wait(dist/150 + 0.5)
+
+                -- กดปุ่มซ้ำเพื่อหยุดบิน
+                VirtualInputManager:SendKeyEvent(true, selectedKey, false, game)
+                task.wait(0.1)
+                VirtualInputManager:SendKeyEvent(false, selectedKey, false, game)
+
+            elseif powerMode == "Not gas" then
+                -- Tween ตัวผู้เล่นไปตรง ๆ
+                local goal = {CFrame = CFrame.new(Vector3.new(selectedLocation.X, math.max(selectedLocation.Y, 211.2), selectedLocation.Z))}
+                local dist = (hrp.Position - selectedLocation).Magnitude
+                local info = TweenInfo.new(dist/100, Enum.EasingStyle.Linear)
+                TweenService:Create(hrp, info, goal):Play()
+            end
+        end
+    })
 end
+
 
 Window:Line()
 
