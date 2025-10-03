@@ -1023,129 +1023,132 @@ end
 -- Line Separator
 Window:Line()
 
--- Extra Tab Fly System
-local Extra = Window:Tab({Title = "Extra 55", Icon = "tag"}) do
+-- Extra Tab Fly System (สมบูรณ์)
+local Extra = Window:Tab({Title = "Extra fly", Icon = "tag"}) do
     Extra:Section({Title = "Fly System"})
 
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
     local UIS = game:GetService("UserInputService")
     local TweenService = game:GetService("TweenService")
+    local VirtualUser = game:GetService("VirtualUser")
 
-    -- ======= Dropdown: ตำแหน่ง =======
-    local locations = {
-        ["Windmill"] = Vector3.new(105.8,265.0,-37.4),
-        ["Big Cave"] = Vector3.new(60.9,300.0,-986.7),
-        ["Sam Island"] = Vector3.new(-1410.2,268.7,-1440.1),
-        ["Orange House"] = Vector3.new(868.3,290.0,1243.1),
-        ["Cafe"] = Vector3.new(1480.2,288.6,2128.8),
-        ["Red House"] = Vector3.new(1126.2,220.9,3345.6),
-        ["Sand (AF)"] = Vector3.new(122.8,282.5,4945.1),
-        ["Snow Island (Small)"] = Vector3.new(-1819.4,412.2,3322.9),
-        ["Ball"] = Vector3.new(-2621.9,317.9,1099.4),
-        ["Big Tree"] = Vector3.new(-6034.5,424.7,-7.5),
-        ["One Block"] = Vector3.new(-4004.7,220.1,-2191.0),
-        ["Marin"] = Vector3.new(-3134.5,509.0,-3990.7),
-        ["Purple Island"] = Vector3.new(-5284.6,544.2,-7758.0),
-        ["Sand Island"] = Vector3.new(1075.6,289.5,-3332.1),
-        ["Summon Island"] = Vector3.new(4846.3,648.7,-7257.8),
-        ["Snow Island (Big)"] = Vector3.new(6209.7,586.6,-1263.7),
-        ["Vokun Island"] = Vector3.new(4613.5,587.0,5265.0),
-        ["Moon Island"] = Vector3.new(3229,420.0,1675.3),
-        ["Mini Town"] = Vector3.new(1886.2,340.6,634.9),
-        ["Tree Stone"] = Vector3.new(-31.2,248.8,2153.5),
-        ["Krizma Island"] = Vector3.new(-1073.9,380.5,1668.7),
-        ["Sand Island (Very Small)"] = Vector3.new(-1213.9,266.7,651.9),
-        ["Bear Island"] = Vector3.new(-1623.6,260.0,-248.5)
+    -- สถานที่และตำแหน่ง
+    local FlyLocations = {
+        ["Windmill"] = Vector3.new(105.8, 265.0, -37.4),
+        ["Big Cave"] = Vector3.new(60.9, 300.0, -986.7),
+        ["Sam Island"] = Vector3.new(-1410.2, 268.7, -1440.1),
+        ["Orange House"] = Vector3.new(868.3, 290.0, 1243.1),
+        ["Cafe"] = Vector3.new(1480.2, 288.6, 2128.8),
+        ["Red House"] = Vector3.new(1126.2, 220.9, 3345.6),
+        ["Sand (AF)"] = Vector3.new(122.8, 282.5, 4945.1),
+        ["Snow Island (Small)"] = Vector3.new(-1819.4, 412.2, 3322.9),
+        ["Ball"] = Vector3.new(-2621.9, 317.9, 1099.4),
+        ["Big Tree"] = Vector3.new(-6034.5, 424.7, -7.5),
+        ["One Block"] = Vector3.new(-4004.7, 220.1, -2191.0),
+        ["Marin"] = Vector3.new(-3134.5, 509.0, -3990.7),
+        ["Purple Island"] = Vector3.new(-5284.6, 544.2, -7758.0),
+        ["Sand Island"] = Vector3.new(1075.6, 289.5, -3332.1),
+        ["Summon Island"] = Vector3.new(4846.3, 648.7, -7257.8),
+        ["Snow Island (Big)"] = Vector3.new(6209.7, 586.6, -1263.7),
+        ["Vokun Island"] = Vector3.new(4613.5, 587.0, 5265.0),
+        ["Moon Island"] = Vector3.new(3229, 420.0, 1675.3),
+        ["Mini Town"] = Vector3.new(1886.2, 340.6, 634.9),
+        ["Tree Stone"] = Vector3.new(-31.2, 248.8, 2153.5),
+        ["Krizma Island"] = Vector3.new(-1073.9, 380.5, 1668.7),
+        ["Sand Island (Very Small)"] = Vector3.new(-1213.9, 266.7, 651.9),
+        ["Bear Island"] = Vector3.new(-1623.6, 260.0, -248.5),
     }
 
-    local selectedLocation = "Windmill"
-    local flyMode = "Gas" -- Gas or Not Gas
+    -- Variables
+    local selectedLocation = nil
+    local flyMode = "Gas" -- Gas / Not Gas
     local flyKey = Enum.KeyCode.Z
+    local flyActive = false
 
-    local locDropdown = Extra:Dropdown({
+    -- Dropdown สถานที่
+    local locationDropdown = Extra:Dropdown({
         Title = "Select Location",
-        List = (function() local t={} for k,_ in pairs(locations) do table.insert(t,k) end return t end)(),
-        Value = selectedLocation,
-        Callback = function(choice) selectedLocation = choice end
+        List = table.unpack((function()
+            local t = {}
+            for k,_ in pairs(FlyLocations) do table.insert(t,k) end
+            return t
+        end)()),
+        Value = "Windmill",
+        Callback = function(choice)
+            selectedLocation = choice
+        end
     })
+    selectedLocation = locationDropdown.Value
 
-    local modeDropdown = Extra:Dropdown({
+    -- Dropdown Fly Mode
+    Extra:Dropdown({
         Title = "Fly Mode",
         List = {"Gas","Not Gas"},
         Value = flyMode,
-        Callback = function(choice) flyMode = choice end
+        Callback = function(choice)
+            flyMode = choice
+        end
     })
 
-    local keyDropdown = Extra:Dropdown({
-        Title = "Key Bind (Gas)",
+    -- Dropdown KeyBlind
+    Extra:Dropdown({
+        Title = "Select Fly Key",
         List = {"Z","X","C","V","B","N","F"},
         Value = "Z",
-        Callback = function(choice) flyKey = Enum.KeyCode[choice] end
+        Callback = function(choice)
+            flyKey = Enum.KeyCode[choice]
+        end
     })
 
-    local flyEnabled = false
-
-    local flyButton = Extra:Button({
+    -- ปุ่มเริ่ม Fly to Mark
+    Extra:Button({
         Title = "Fly to Mark",
         Desc = "Start flying to selected location",
         Callback = function()
-            if flyEnabled then return end
-            flyEnabled = true
-
-            -- เตรียม character
-            local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-            local hrp = char:WaitForChild("HumanoidRootPart")
-            local startPos = hrp.Position
-
-            local targetPos = locations[selectedLocation]
-            if not targetPos then
-                Window:Notify({Title="Fly System",Desc="Invalid location!",Time=3})
-                flyEnabled = false
+            if not selectedLocation or not FlyLocations[selectedLocation] then
+                Window:Notify({Title="Fly System", Desc="No location selected!", Time=3})
                 return
             end
 
-            -- ยกสูง 30 stud
-            local upPos = Vector3.new(hrp.Position.X, math.max(hrp.Position.Y,211.2)+30, hrp.Position.Z)
+            if flyActive then return end
+            flyActive = true
 
-            -- Tween function
-            local function tweenTo(pos,duration)
-                local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
-                local tween = TweenService:Create(hrp,tweenInfo,{CFrame=CFrame.new(pos)})
-                tween:Play()
-                tween.Completed:Wait()
-            end
+            local char = LocalPlayer.Character
+            if not char then flyActive = false return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if not hrp then flyActive = false return end
+
+            local targetPos = FlyLocations[selectedLocation] + Vector3.new(0,30,0)
+            local tweenInfo = TweenInfo.new((hrp.Position - targetPos).Magnitude/150, Enum.EasingStyle.Linear)
+            local tween = TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(targetPos)})
 
             spawn(function()
                 if flyMode == "Gas" then
-                    -- กด KeyBind ก่อนขึ้น
-                    local uisDown = Instance.new("BindableEvent")
-                    uisDown.Event:Connect(function() end)
-                    local UIS = game:GetService("UserInputService")
-                    UIS.InputBegan:Fire({KeyCode=flyKey})
-
-                    -- Tween ขึ้น 30 stud
-                    tweenTo(upPos,1.2)
-
-                    -- Tween ไปตำแหน่ง target
-                    local midPos = Vector3.new(targetPos.X, upPos.Y, targetPos.Z)
-                    tweenTo(midPos, (upPos - midPos).Magnitude/100)
-
-                    -- กด KeyBind อีกครั้งตอนถึง
-                    UIS.InputBegan:Fire({KeyCode=flyKey})
-
-                else
-                    -- Not Gas Mode, Tween ปกติ
-                    tweenTo(upPos,1.2)
-                    local midPos = Vector3.new(targetPos.X, upPos.Y, targetPos.Z)
-                    tweenTo(midPos, (upPos - midPos).Magnitude/100)
+                    -- กด KeyBlind ก่อนลอย
+                    VirtualUser:CaptureController()
+                    VirtualUser:KeyDown(flyKey)
+                    task.wait(0.1)
                 end
 
-                flyEnabled = false
+                tween:Play()
+                tween.Completed:Wait()
+
+                if flyMode == "Gas" then
+                    task.wait(0.5)
+                    -- กด KeyBlind อีกครั้งตอนถึง
+                    VirtualUser:CaptureController()
+                    VirtualUser:KeyDown(flyKey)
+                    task.wait(0.1)
+                    VirtualUser:KeyUp(flyKey)
+                end
+
+                flyActive = false
             end)
         end
     })
 end
+
 
 
 
@@ -1174,6 +1177,7 @@ Window:Notify({
     Time = 4
 
 })
+
 
 
 
