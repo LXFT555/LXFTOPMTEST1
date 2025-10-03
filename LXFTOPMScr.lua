@@ -1023,7 +1023,7 @@ end
 -- Line Separator
 Window:Line()
 
--- Extra Tab (รวม Fly System)
+-- Extra Tab + Fly System
 local Extra = Window:Tab({Title = "Extra", Icon = "tag"}) do
     Extra:Section({Title = "About"})
     Extra:Button({
@@ -1038,20 +1038,19 @@ local Extra = Window:Tab({Title = "Extra", Icon = "tag"}) do
         end
     })
 
-    -- ==========================
-    -- Fly System Section
-    -- ==========================
+    -------------------------
+    -- Fly System
+    -------------------------
     Extra:Section({Title = "Fly System"})
 
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local RunService = game:GetService("RunService")
     local TweenService = game:GetService("TweenService")
     local UserInputService = game:GetService("UserInputService")
-    local flyRunning = false
-    local targetLocation = nil
-    local flyMode = "Gas"
-    local flyKey = Enum.KeyCode.Z
 
-    -- รายชื่อ Location
-    local locations = {
+    -- รายชื่อสถานที่ + พิกัด
+    local Locations = {
         ["Windmill"] = Vector3.new(105.8,265.0,-37.4),
         ["Big Cave"] = Vector3.new(60.9,300.0,-986.7),
         ["Sam Island"] = Vector3.new(-1410.2,268.7,-1440.1),
@@ -1077,110 +1076,90 @@ local Extra = Window:Tab({Title = "Extra", Icon = "tag"}) do
         ["Bear Island"] = Vector3.new(-1623.6,260.0,-248.5)
     }
 
+    -- Dropdowns
+    local selectedLocationName = nil
+    local selectedFlyMode = "Gas" -- Gas / Not Gas
+    local selectedKeyBind = Enum.KeyCode.Z
+
     local locationDropdown = Extra:Dropdown({
         Title = "Select Location",
-        List = (function()
-            local t = {}
-            for name,_ in pairs(locations) do table.insert(t,name) end
-            return t
-        end)(),
-        Value = "Windmill",
+        List = table.create(#Locations),
+        Value = "",
         Callback = function(choice)
-            targetLocation = locations[choice]
+            selectedLocationName = choice
+            print("Selected location:", choice)
         end
     })
-    targetLocation = locations["Windmill"]
+    -- เติมชื่อ Location
+    local locNames = {}
+    for name,_ in pairs(Locations) do table.insert(locNames,name) end
+    locationDropdown:Refresh(locNames, locNames[1])
 
-    local flyModeDropdown = Extra:Dropdown({
+    Extra:Dropdown({
         Title = "Fly Mode",
         List = {"Gas","Not Gas"},
         Value = "Gas",
         Callback = function(choice)
-            flyMode = choice
+            selectedFlyMode = choice
+            print("Fly mode:", choice)
         end
     })
 
-    local flyKeyDropdown = Extra:Dropdown({
-        Title = "Fly Keybind",
+    Extra:Dropdown({
+        Title = "KeyBind (Gas Mode)",
         List = {"Z","X","C","V","B","N","F"},
         Value = "Z",
         Callback = function(choice)
-            flyKey = Enum.KeyCode[choice]
+            selectedKeyBind = Enum.KeyCode[choice]
+            print("Selected KeyBind:", choice)
         end
     })
+
+    local flyActive = false
 
     Extra:Button({
         Title = "Fly to Mark",
         Desc = "Start flying to selected location",
         Callback = function()
-            if not targetLocation then
-                Window:Notify({Title="Fly System",Desc="No target location selected.",Time=3})
+            if flyActive then return end
+            if not selectedLocationName then
+                Window:Notify({Title="Fly System",Desc="No location selected.",Time=3})
                 return
             end
-            if flyRunning then return end
-            flyRunning = true
 
-            spawn(function()
-                local char = LocalPlayer.Character
-                if not char or not char:FindFirstChild("HumanoidRootPart") then
-                    flyRunning = false
-                    return
-                end
-                local hrp = char.HumanoidRootPart
+            local targetPos = Locations[selectedLocationName]
+            local char = LocalPlayer.Character
+            if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+            local hrp = char.HumanoidRootPart
 
-                -- ตรวจ Y ต่ำสุด
-                if hrp.Position.Y < 211.2 then
-                    hrp.CFrame = hrp.CFrame + Vector3.new(0,211.2-hrp.Position.Y,0)
-                    task.wait(0.2)
-                end
+            flyActive = true
+            local upOffset = Vector3.new(0,30,0)
 
-                -- ลอยขึ้น 30 stud
-                local tweenInfo = TweenInfo.new(1,Enum.EasingStyle.Quad,Enum.EasingDirection.Out)
-                local goal = {CFrame = hrp.CFrame + Vector3.new(0,30,0)}
-                local tween = TweenService:Create(hrp, tweenInfo, goal)
-                tween:Play()
-                tween.Completed:Wait()
+            -- Gas Mode: กด KeyBind ก่อนลอย
+            if selectedFlyMode == "Gas" then
+                UserInputService.InputBegan:Fire({KeyCode = selectedKeyBind}, false)
+            end
 
-                if flyMode == "Gas" then
-                    -- กด key เพื่อ Gas Mode
-                    local vu = game:GetService("VirtualUser")
-                    vu:CaptureController()
-                    vu:ClickButton2(Vector2.new())
-                    UserInputService.InputBegan:Fire({KeyCode=flyKey})
+            -- ลอยขึ้น 30 stud
+            local tweenUp = TweenService:Create(hrp, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {CFrame = CFrame.new(hrp.Position + upOffset)})
+            tweenUp:Play()
+            tweenUp.Completed:Wait()
 
-                    -- ลอยต่อเนื่องแบบเดิน + tween เพิ่มความเร็ว
-                    local step = 1
-                    local startPos = hrp.Position
-                    local endPos = targetLocation + Vector3.new(0,30,0)
-                    local direction = (endPos - startPos).Unit
-                    local distance = (endPos - startPos).Magnitude
-                    local speed = 100 * 1.2
-                    local totalTime = distance / speed
-                    local elapsed = 0
-                    local dt = 0.03
+            -- Tween ไปตำแหน่ง (แอบเพิ่มความเร็วใน Gas Mode)
+            local distance = (hrp.Position - targetPos).Magnitude
+            local speed = selectedFlyMode == "Gas" and 100 or 50
+            local time = distance / speed
+            local tweenTarget = TweenService:Create(hrp, TweenInfo.new(time, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {CFrame = CFrame.new(targetPos + upOffset)})
+            tweenTarget:Play()
+            tweenTarget.Completed:Wait()
 
-                    while elapsed < totalTime do
-                        hrp.CFrame = CFrame.new(hrp.Position + direction*speed*dt)
-                        task.wait(dt)
-                        elapsed = elapsed + dt
-                    end
-                    hrp.CFrame = CFrame.new(endPos)
+            -- Gas Mode: กด KeyBind อีกครั้ง
+            if selectedFlyMode == "Gas" then
+                UserInputService.InputBegan:Fire({KeyCode = selectedKeyBind}, false)
+            end
 
-                    -- กด key อีกครั้งตอนถึง
-                    UserInputService.InputBegan:Fire({KeyCode=flyKey})
-                else
-                    -- Not Gas → Tween ปกติ
-                    local distance = (targetLocation - hrp.Position).Magnitude
-                    local speed = 100
-                    local time = distance/speed
-                    local flyTween = TweenService:Create(hrp,TweenInfo.new(time,Enum.EasingStyle.Linear,Enum.EasingDirection.Out),{CFrame = CFrame.new(targetLocation + Vector3.new(0,30,0))})
-                    flyTween:Play()
-                    flyTween.Completed:Wait()
-                end
-
-                flyRunning = false
-                Window:Notify({Title="Fly System",Desc="Arrived at "..locationDropdown.Value,Time=3})
-            end)
+            flyActive = false
+            Window:Notify({Title="Fly System",Desc="Arrived at "..selectedLocationName,Time=3})
         end
     })
 end
@@ -1211,4 +1190,5 @@ Window:Notify({
     Time = 4
 
 })
+
 
