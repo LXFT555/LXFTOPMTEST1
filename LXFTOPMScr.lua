@@ -1023,29 +1023,12 @@ end
 -- Line Separator
 Window:Line()
 
--- Extra Tab + Fly System
+-- Extra Tab + Full Fly System
 local Extra = Window:Tab({Title = "Extra", Icon = "tag"}) do
-    Extra:Section({Title = "About"})
-    Extra:Button({
-        Title = "Show Message",
-        Desc = "Display a popup",
-        Callback = function()
-            Window:Notify({
-                Title = "Fluent UI",
-                Desc = "Everything works fine!",
-                Time = 3
-            })
-        end
-    })
-
-    -------------------------
-    -- Fly System
-    -------------------------
     Extra:Section({Title = "Fly System"})
 
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
-    local RunService = game:GetService("RunService")
     local TweenService = game:GetService("TweenService")
     local UserInputService = game:GetService("UserInputService")
 
@@ -1076,63 +1059,62 @@ local Extra = Window:Tab({Title = "Extra", Icon = "tag"}) do
         ["Bear Island"] = Vector3.new(-1623.6,260.0,-248.5)
     }
 
-    -- Dropdowns
-    local selectedLocationName = nil
-    local selectedFlyMode = "Gas" -- Gas / Not Gas
+    local selectedLocationName = next(Locations)
+    local selectedFlyMode = "Gas"
     local selectedKeyBind = Enum.KeyCode.Z
+    local flyActive = false
 
+    -- Dropdown เลือก Location
     local locationDropdown = Extra:Dropdown({
         Title = "Select Location",
-        List = table.create(#Locations),
+        List = {}, -- เติมข้างล่าง
         Value = "",
         Callback = function(choice)
             selectedLocationName = choice
-            print("Selected location:", choice)
+            print("Selected Location:", choice)
         end
     })
-    -- เติมชื่อ Location
     local locNames = {}
     for name,_ in pairs(Locations) do table.insert(locNames,name) end
     locationDropdown:Refresh(locNames, locNames[1])
+    selectedLocationName = locNames[1]
 
+    -- Dropdown Fly Mode
     Extra:Dropdown({
         Title = "Fly Mode",
         List = {"Gas","Not Gas"},
         Value = "Gas",
         Callback = function(choice)
             selectedFlyMode = choice
-            print("Fly mode:", choice)
         end
     })
 
+    -- Dropdown KeyBind
     Extra:Dropdown({
         Title = "KeyBind (Gas Mode)",
         List = {"Z","X","C","V","B","N","F"},
         Value = "Z",
         Callback = function(choice)
             selectedKeyBind = Enum.KeyCode[choice]
-            print("Selected KeyBind:", choice)
         end
     })
 
-    local flyActive = false
-
+    -- ปุ่ม Fly
     Extra:Button({
         Title = "Fly to Mark",
         Desc = "Start flying to selected location",
         Callback = function()
             if flyActive then return end
             if not selectedLocationName then
-                Window:Notify({Title="Fly System",Desc="No location selected.",Time=3})
+                Window:Notify({Title="Fly System", Desc="No location selected.", Time=3})
                 return
             end
-
             local targetPos = Locations[selectedLocationName]
             local char = LocalPlayer.Character
             if not char or not char:FindFirstChild("HumanoidRootPart") then return end
             local hrp = char.HumanoidRootPart
-
             flyActive = true
+
             local upOffset = Vector3.new(0,30,0)
 
             -- Gas Mode: กด KeyBind ก่อนลอย
@@ -1145,15 +1127,15 @@ local Extra = Window:Tab({Title = "Extra", Icon = "tag"}) do
             tweenUp:Play()
             tweenUp.Completed:Wait()
 
-            -- Tween ไปตำแหน่ง (แอบเพิ่มความเร็วใน Gas Mode)
+            -- Tween ไปตำแหน่ง + Gas Mode เพิ่มความเร็ว
             local distance = (hrp.Position - targetPos).Magnitude
-            local speed = selectedFlyMode == "Gas" and 100 or 50
+            local speed = selectedFlyMode == "Gas" and 150 or 80
             local time = distance / speed
             local tweenTarget = TweenService:Create(hrp, TweenInfo.new(time, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {CFrame = CFrame.new(targetPos + upOffset)})
             tweenTarget:Play()
             tweenTarget.Completed:Wait()
 
-            -- Gas Mode: กด KeyBind อีกครั้ง
+            -- Gas Mode: กด KeyBind อีกครั้งตอนถึง
             if selectedFlyMode == "Gas" then
                 UserInputService.InputBegan:Fire({KeyCode = selectedKeyBind}, false)
             end
@@ -1190,5 +1172,6 @@ Window:Notify({
     Time = 4
 
 })
+
 
 
