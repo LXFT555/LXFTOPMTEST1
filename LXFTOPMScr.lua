@@ -1024,7 +1024,7 @@ end
 Window:Line()
 
 -- Extra Tab
-local Extra = Window:Tab({Title = "Extra", Icon = "tag"}) do
+local Extra = Window:Tab({Title = "Extra Teat", Icon = "tag"}) do
     Extra:Section({Title = "About"})
     Extra:Button({
         Title = "Show Message",
@@ -1041,7 +1041,7 @@ local Extra = Window:Tab({Title = "Extra", Icon = "tag"}) do
     -------------------------
     -- Fly System
     -------------------------
-    Extra:Section({Title = "Fly System"})
+    Extra:Section({Title = "Fly ST"})
 
     local TweenService = game:GetService("TweenService")
     local Players = game:GetService("Players")
@@ -1161,7 +1161,6 @@ local Extra = Window:Tab({Title = "Extra", Icon = "tag"}) do
 end
 
 
-
 Window:Line()
 
 -- Settings Tab
@@ -1187,6 +1186,7 @@ Window:Notify({
     Time = 4
 
 })
+
 
 
 
